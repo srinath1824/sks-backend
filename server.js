@@ -6,46 +6,53 @@ const { pool, initDatabase } = require('./database');
 const { swaggerUi, specs } = require('./swagger');
 require('dotenv').config();
 
-// Handle uncaught exceptions
+// Handle uncaught exceptions - log but don't exit
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
-  process.exit(1);
+  // Don't exit in production, let Railway handle restarts
 });
 
-// Handle unhandled promise rejections
+// Handle unhandled promise rejections - log but don't exit
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
+  // Don't exit in production, let Railway handle restarts
+});
+
+// Handle memory warnings
+process.on('warning', (warning) => {
+  console.warn('Warning:', warning.name, warning.message);
 });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 
-// Security middleware
-app.use(helmet());
-// app.use(cors({
-//   origin: ['http://localhost:5173', 'http://localhost:3000', 'https://sivakundalini.org', 'https://sivakundalini.org/'],
-//   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-//   allowedHeaders: ['Content-Type', 'Authorization'],
-//   credentials: true
-// }));
+// CORS must be before other middleware
 app.use(cors({
-  origin: '*', // Allow all origins explicitly
-  credentials: false, // Set to false when using wildcard origin
+  origin: '*',
+  credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 200
 }));
 
-// Rate limiting
+// Security middleware
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Rate limiting (skip for OPTIONS)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP'
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests from this IP',
+  skip: (req) => req.method === 'OPTIONS'
 });
 app.use(limiter);
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Initialize database
 initDatabase();
@@ -102,26 +109,34 @@ app.post('/api/track-search', async (req, res) => {
   try {
     const { mobileNumber } = req.body;
     
-    // Always update mobile_searches table first
-    try {
-      await pool.execute(`
-        INSERT INTO mobile_searches (mobile_number, click_count, name)
-        VALUES (?, 1, NULL)
-        ON DUPLICATE KEY UPDATE
-        click_count = click_count + 1,
-        last_updated = CURRENT_TIMESTAMP
-      `, [mobileNumber || '']);
-    } catch (dbError) {
-      console.error('Database tracking error:', dbError);
-      // Continue execution even if tracking fails
+    // Only track actual POST requests, not OPTIONS
+    if (req.method === 'POST' && mobileNumber) {
+      try {
+        await pool.execute(`
+          INSERT INTO mobile_searches (mobile_number, click_count, name)
+          VALUES (?, 1, NULL)
+          ON DUPLICATE KEY UPDATE
+          click_count = click_count + 1,
+          last_updated = CURRENT_TIMESTAMP
+        `, [mobileNumber]);
+      } catch (dbError) {
+        console.error('Database tracking error:', dbError);
+        // Continue execution even if tracking fails
+      }
     }
     
     if (!mobileNumber || !/^\d{10}$/.test(mobileNumber)) {
       return res.status(400).json({ error: 'Invalid mobile number' });
     }
 
-    // Query test_results table
-    const [testResult] = await pool.execute('SELECT * FROM test_results WHERE phone = ?', [mobileNumber]);
+    // Query test_results table with error handling
+    let testResult = [];
+    try {
+      [testResult] = await pool.execute('SELECT * FROM test_results WHERE phone = ?', [mobileNumber]);
+    } catch (dbError) {
+      console.error('Database query error:', dbError);
+      return res.status(500).json({ error: 'Database temporarily unavailable' });
+    }
     
     // Update name if test result found
     if (testResult.length > 0) {
@@ -200,16 +215,22 @@ app.get('/api/admin/searches', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const [result] = await pool.execute(`
-      SELECT 
-        id,
-        mobile_number,
-        click_count,
-        name,
-        last_updated
-      FROM mobile_searches 
-      ORDER BY last_updated DESC
-    `);
+    let result = [];
+    try {
+      [result] = await pool.execute(`
+        SELECT 
+          id,
+          mobile_number,
+          click_count,
+          name,
+          last_updated
+        FROM mobile_searches 
+        ORDER BY last_updated DESC
+      `);
+    } catch (dbError) {
+      console.error('Admin query error:', dbError);
+      return res.status(500).json({ error: 'Database temporarily unavailable' });
+    }
     
     res.json({
       success: true,
@@ -255,8 +276,17 @@ app.use((error, req, res, next) => {
   }
 });
 
+// Handle preflight requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
 // Request timeout middleware
 app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') return next();
   res.setTimeout(30000, () => {
     console.error('Request timeout:', req.url);
     if (!res.headersSent) {

@@ -15,9 +15,12 @@ const pool = mysql.createPool({
 });
 
 const initDatabase = async () => {
-  let retries = 3;
+  let retries = 5;
   while (retries > 0) {
     try {
+      // Test connection first
+      await pool.execute('SELECT 1');
+      
       await pool.execute(`
         CREATE TABLE IF NOT EXISTS mobile_searches (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -40,15 +43,15 @@ const initDatabase = async () => {
       `);
       
       console.log('Database initialized successfully');
-      break;
+      return;
     } catch (error) {
       console.error('Database initialization error:', error);
       retries--;
       if (retries === 0) {
-        console.error('Failed to initialize database after 3 attempts');
-        process.exit(1);
+        console.error('Failed to initialize database after 5 attempts, continuing without DB');
+        return; // Don't exit, continue without DB
       }
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise(resolve => setTimeout(resolve, 10000));
     }
   }
 };
