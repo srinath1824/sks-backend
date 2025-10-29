@@ -6,6 +6,18 @@ const { pool, initDatabase } = require('./database');
 const { swaggerUi, specs } = require('./swagger');
 require('dotenv').config();
 
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -82,28 +94,55 @@ app.post('/api/track-search', async (req, res) => {
   try {
     const { mobileNumber } = req.body;
     
+    // Always update mobile_searches table first
+    try {
+      await pool.execute(`
+        INSERT INTO mobile_searches (mobile_number, click_count, name)
+        VALUES (?, 1, NULL)
+        ON DUPLICATE KEY UPDATE
+        click_count = click_count + 1,
+        last_updated = CURRENT_TIMESTAMP
+      `, [mobileNumber || '']);
+    } catch (dbError) {
+      console.error('Database tracking error:', dbError);
+      // Continue execution even if tracking fails
+    }
+    
     if (!mobileNumber || !/^\d{10}$/.test(mobileNumber)) {
       return res.status(400).json({ error: 'Invalid mobile number' });
     }
 
-    await pool.execute(`
-      INSERT INTO mobile_searches (mobile_number, click_count)
-      VALUES (?, 1)
-      ON DUPLICATE KEY UPDATE
-      click_count = click_count + 1,
-      last_updated = CURRENT_TIMESTAMP
-    `, [mobileNumber]);
+    // Query test_results table
+    const [testResult] = await pool.execute('SELECT * FROM test_results WHERE phone = ?', [mobileNumber]);
     
-    const [result] = await pool.execute('SELECT * FROM mobile_searches WHERE mobile_number = ?', [mobileNumber]);
+    // Update name if test result found
+    if (testResult.length > 0) {
+      try {
+        await pool.execute(`
+          UPDATE mobile_searches 
+          SET name = ? 
+          WHERE mobile_number = ?
+        `, [testResult[0].name, mobileNumber]);
+      } catch (updateError) {
+        console.error('Name update error:', updateError);
+        // Continue execution even if name update fails
+      }
+    }
+    
+    if (testResult.length === 0) {
+      return res.status(404).json({ error: 'No test result found for this mobile number' });
+    }
     
     res.json({
       success: true,
-      data: result[0]
+      data: testResult[0]
     });
 
   } catch (error) {
     console.error('Track search error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
@@ -158,6 +197,7 @@ app.get('/api/admin/searches', async (req, res) => {
         id,
         mobile_number,
         click_count,
+        name,
         last_updated
       FROM mobile_searches 
       ORDER BY last_updated DESC
@@ -171,7 +211,9 @@ app.get('/api/admin/searches', async (req, res) => {
 
   } catch (error) {
     console.error('Admin searches error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
 });
 
@@ -200,7 +242,20 @@ app.get('/health', (req, res) => {
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
-  res.status(500).json({ error: 'Internal server error' });
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Request timeout middleware
+app.use((req, res, next) => {
+  res.setTimeout(30000, () => {
+    console.error('Request timeout:', req.url);
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  });
+  next();
 });
 
 // 404 handler
@@ -208,6 +263,23 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`SKS API Server running on port ${PORT}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
 });
