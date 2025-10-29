@@ -305,19 +305,19 @@ const server = app.listen(PORT, () => {
   console.log(`SKS API Server running on port ${PORT}`);
 });
 
-// Graceful shutdown
+// Graceful shutdown for Railway
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
   server.close(() => {
-    console.log('Process terminated');
-    process.exit(0);
+    console.log('Server closed');
+    // Let Railway handle the process termination
   });
 });
 
 process.on('SIGINT', () => {
   console.log('SIGINT received, shutting down gracefully');
   server.close(() => {
-    console.log('Process terminated');
-    process.exit(0);
+    console.log('Server closed');
+    // Let Railway handle the process termination
   });
 });
