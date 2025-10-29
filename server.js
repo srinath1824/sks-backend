@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3001;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['http://localhost:5173', 'https://your-domain.com'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://sivakundalini.org/'],
   credentials: true
 }));
 
@@ -86,21 +86,19 @@ app.post('/api/track-search', async (req, res) => {
       return res.status(400).json({ error: 'Invalid mobile number' });
     }
 
-    const query = `
-      INSERT INTO mobile_searches (mobile_number, click_count, last_updated)
-      VALUES ($1, 1, CURRENT_TIMESTAMP)
-      ON CONFLICT (mobile_number)
-      DO UPDATE SET 
-        click_count = mobile_searches.click_count + 1,
-        last_updated = CURRENT_TIMESTAMP
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, [mobileNumber]);
+    await pool.execute(`
+      INSERT INTO mobile_searches (mobile_number, click_count)
+      VALUES (?, 1)
+      ON DUPLICATE KEY UPDATE
+      click_count = click_count + 1,
+      last_updated = CURRENT_TIMESTAMP
+    `, [mobileNumber]);
+    
+    const [result] = await pool.execute('SELECT * FROM mobile_searches WHERE mobile_number = ?', [mobileNumber]);
     
     res.json({
       success: true,
-      data: result.rows[0]
+      data: result[0]
     });
 
   } catch (error) {
@@ -155,7 +153,7 @@ app.get('/api/admin/searches', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const query = `
+    const [result] = await pool.execute(`
       SELECT 
         id,
         mobile_number,
@@ -163,14 +161,12 @@ app.get('/api/admin/searches', async (req, res) => {
         last_updated
       FROM mobile_searches 
       ORDER BY last_updated DESC
-    `;
-
-    const result = await pool.query(query);
+    `);
     
     res.json({
       success: true,
-      data: result.rows,
-      total: result.rows.length
+      data: result,
+      total: result.length
     });
 
   } catch (error) {
