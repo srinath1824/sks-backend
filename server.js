@@ -24,7 +24,9 @@ const PORT = process.env.PORT || 3001;
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://sivakundalini.org/'],
+  origin: ['http://localhost:5173', 'http://localhost:3000', 'https://sivakundalini.org', 'https://sivakundalini.org/'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
