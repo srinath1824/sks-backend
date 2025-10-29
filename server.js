@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { pool, initDatabase } = require('./database');
+const { swaggerUi, specs } = require('./swagger');
 require('dotenv').config();
 
 const app = express();
@@ -29,7 +30,54 @@ app.use(express.json({ limit: '10mb' }));
 // Initialize database
 initDatabase();
 
-// Track mobile number search
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+
+/**
+ * @swagger
+ * /api/track-search:
+ *   post:
+ *     summary: Track mobile number search
+ *     description: Records or increments the search count for a mobile number
+ *     tags: [Tracking]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/TrackSearchRequest'
+ *           example:
+ *             mobileNumber: "9876543210"
+ *     responses:
+ *       200:
+ *         description: Search tracked successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       400:
+ *         description: Invalid mobile number
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Invalid mobile number"
+ *       429:
+ *         description: Too many requests
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Too many requests from this IP"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 app.post('/api/track-search', async (req, res) => {
   try {
     const { mobileNumber } = req.body;
@@ -61,7 +109,44 @@ app.post('/api/track-search', async (req, res) => {
   }
 });
 
-// Admin route to view all searches
+/**
+ * @swagger
+ * /api/admin/searches:
+ *   get:
+ *     summary: Get all mobile searches (Admin only)
+ *     description: Retrieves all mobile number searches with their click counts
+ *     tags: [Admin]
+ *     security:
+ *       - AdminSecret: []
+ *     parameters:
+ *       - in: query
+ *         name: secret
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Admin secret key
+ *     responses:
+ *       200:
+ *         description: List of all searches
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AdminResponse'
+ *       401:
+ *         description: Unauthorized - Invalid or missing secret
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *             example:
+ *               error: "Unauthorized"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
 app.get('/api/admin/searches', async (req, res) => {
   try {
     const { secret } = req.query;
@@ -94,7 +179,24 @@ app.get('/api/admin/searches', async (req, res) => {
   }
 });
 
-// Health check
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Health check endpoint
+ *     description: Returns the server status and current timestamp
+ *     tags: [Health]
+ *     responses:
+ *       200:
+ *         description: Server is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/HealthResponse'
+ *             example:
+ *               status: "OK"
+ *               timestamp: "2024-01-15T10:30:00.000Z"
+ */
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
