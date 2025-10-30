@@ -227,13 +227,8 @@ app.post('/api/search-result', async (req, res) => {
     };
     
     // Only add whatsappLink if result is 'Selected'
-    try {
-      if (testResult[0] && testResult[0].result === 'Selected') {
-        response.whatsappLink = process.env.WHATSAPP_LINK;
-      }
-    } catch (linkError) {
-      console.error('WhatsApp link error:', linkError);
-      // Continue without WhatsApp link
+    if (testResult[0] && testResult[0].result && testResult[0].result.toLowerCase() === 'selected') {
+      response.whatsappLink = process.env.WHATSAPP_LINK;
     }
     
     try {
