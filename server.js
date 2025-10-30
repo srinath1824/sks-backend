@@ -155,10 +155,31 @@ app.use('/api-docs', (req, res, next) => {
  */
 app.post('/api/search-result', async (req, res) => {
   try {
-    const { mobileNumber } = req.body;
+    let { mobileNumber } = req.body;
+    
+    // Input validation and sanitization with error protection
+    try {
+      if (!mobileNumber) {
+        return res.status(400).json({ error: 'Mobile number is required' });
+      }
+      
+      // Convert to string and remove all non-digit characters
+      const cleanedNumber = String(mobileNumber).replace(/\D/g, '');
+      
+      // Validate cleaned number
+      if (cleanedNumber.length !== 10) {
+        return res.status(400).json({ error: 'Mobile number must be exactly 10 digits' });
+      }
+      
+      // Use cleaned number for all operations
+      mobileNumber = cleanedNumber;
+    } catch (validationError) {
+      console.error('Validation error:', validationError);
+      return res.status(400).json({ error: 'Invalid input format' });
+    }
     
     // Only track actual POST requests, not OPTIONS
-    if (req.method === 'POST' && mobileNumber) {
+    if (req.method === 'POST') {
       try {
         await pool.execute(`
           INSERT INTO mobile_searches (mobile_number, click_count, name)
@@ -171,10 +192,6 @@ app.post('/api/search-result', async (req, res) => {
         console.error('Database tracking error:', dbError);
         // Continue execution even if tracking fails
       }
-    }
-    
-    if (!mobileNumber || !/^\d{10}$/.test(mobileNumber)) {
-      return res.status(400).json({ error: 'Invalid mobile number' });
     }
 
     // Query test_results table with error handling
@@ -210,11 +227,20 @@ app.post('/api/search-result', async (req, res) => {
     };
     
     // Only add whatsappLink if result is 'Selected'
-    if (testResult[0].result === 'Selected') {
-      response.whatsappLink = process.env.WHATSAPP_LINK;
+    try {
+      if (testResult[0] && testResult[0].result === 'Selected') {
+        response.whatsappLink = process.env.WHATSAPP_LINK;
+      }
+    } catch (linkError) {
+      console.error('WhatsApp link error:', linkError);
+      // Continue without WhatsApp link
     }
     
-    res.json(response);
+    try {
+      res.json(response);
+    } catch (responseError) {
+      console.error('Response error:', responseError);
+    }
 
   } catch (error) {
     console.error('Track search error:', error);
