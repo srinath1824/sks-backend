@@ -25,8 +25,10 @@ const options = {
     ],
     servers: [
       {
-        url: `http://localhost:${process.env.PORT || 3001}`,
-        description: 'Development server',
+        url: process.env.NODE_ENV === 'production' 
+          ? 'https://sks-backend-production-b400.up.railway.app'
+          : `http://localhost:${process.env.PORT || 3002}`,
+        description: process.env.NODE_ENV === 'production' ? 'Production server' : 'Development server',
       },
     ],
     components: {

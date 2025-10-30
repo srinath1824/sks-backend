@@ -109,10 +109,10 @@ All notable changes and deployments to the SKS API Server project are documented
 
 ## 🔗 Quick Links
 
-- **API Base URL:** [https://sks-backend.railway.app](https://sks-backend.railway.app)
-- **API Documentation:** [https://sks-backend.railway.app/api-docs](https://sks-backend.railway.app/api-docs)
-- **Health Check:** [https://sks-backend.railway.app/health](https://sks-backend.railway.app/health)
-- **Admin Dashboard:** [https://sks-backend.railway.app/api/admin/searches](https://sks-backend.railway.app/api/admin/searches)
+- **API Base URL:** [https://sks-backend-production-b400.up.railway.app](https://sks-backend-production-b400.up.railway.app)
+- **API Documentation:** [https://sks-backend-production-b400.up.railway.app/api-docs](https://sks-backend-production-b400.up.railway.app/api-docs)
+- **Health Check:** [https://sks-backend-production-b400.up.railway.app/health](https://sks-backend-production-b400.up.railway.app/health)
+- **Admin Dashboard:** [https://sks-backend-production-b400.up.railway.app/api/admin/searches](https://sks-backend-production-b400.up.railway.app/api/admin/searches)
 
 ---
 

@@ -97,8 +97,16 @@ try {
   // Continue without database - server stays up
 }
 
-// Swagger documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+// Protected Swagger documentation
+app.use('/api-docs', (req, res, next) => {
+  const { secret } = req.query;
+  
+  if (secret !== process.env.ADMIN_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized - Admin access required' });
+  }
+  
+  next();
+}, swaggerUi.serve, swaggerUi.setup(specs));
 
 /**
  * @swagger
