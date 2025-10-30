@@ -166,9 +166,9 @@ app.post('/api/search-result', async (req, res) => {
       // Convert to string and remove all non-digit characters
       const cleanedNumber = String(mobileNumber).replace(/\D/g, '');
       
-      // Validate cleaned number
-      if (cleanedNumber.length !== 10) {
-        return res.status(400).json({ error: 'Mobile number must be exactly 10 digits' });
+      // Basic validation - must have at least some digits
+      if (cleanedNumber.length === 0) {
+        return res.status(400).json({ error: 'Mobile number must contain at least one digit' });
       }
       
       // Use cleaned number for all operations
