@@ -7,11 +7,15 @@ const pool = mysql.createPool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  connectionLimit: 20,
+  connectionLimit: 100, // Increased for high load
   acquireTimeout: 60000,
   timeout: 60000,
   reconnect: true,
-  idleTimeout: 300000
+  idleTimeout: 300000,
+  queueLimit: 0, // No limit on queued connections
+  maxIdle: 10, // Maximum idle connections
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
 });
 
 const initDatabase = async () => {
@@ -27,7 +31,9 @@ const initDatabase = async () => {
           mobile_number VARCHAR(15) NOT NULL UNIQUE,
           click_count INT DEFAULT 0,
           name VARCHAR(100),
-          last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_mobile_number (mobile_number),
+          INDEX idx_last_updated (last_updated)
         )
       `);
       
@@ -38,7 +44,8 @@ const initDatabase = async () => {
           phone VARCHAR(15) NOT NULL UNIQUE,
           current_group VARCHAR(50),
           exam_date DATE,
-          result VARCHAR(20)
+          result VARCHAR(20),
+          INDEX idx_phone (phone)
         )
       `);
       

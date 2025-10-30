@@ -33,7 +33,7 @@ Node.js API server for tracking mobile number searches in the SKS meditation tes
 ## API Endpoints
 
 ### Track Mobile Search
-- **POST** `/api/track-search`
+- **POST** `/api/search-result`
 - **Body:** `{ "mobileNumber": "9876543210" }`
 - **Response:** `{ "success": true, "data": {...} }`
 
@@ -71,7 +71,7 @@ CREATE TABLE mobile_searches (
 // Track search when user submits
 const trackSearch = async (mobileNumber) => {
   try {
-    await fetch('http://localhost:3001/api/track-search', {
+    await fetch('http://localhost:3001/api/search-result', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ mobileNumber })

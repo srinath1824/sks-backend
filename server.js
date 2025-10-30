@@ -41,12 +41,14 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// Rate limiting (skip for OPTIONS)
+// Rate limiting for high load (skip for OPTIONS)
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests from this IP',
-  skip: (req) => req.method === 'OPTIONS'
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 1000, // 1000 requests per minute per IP
+  message: { error: 'Too many requests, please try again later' },
+  skip: (req) => req.method === 'OPTIONS',
+  standardHeaders: true,
+  legacyHeaders: false
 });
 app.use(limiter);
 
@@ -62,7 +64,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 /**
  * @swagger
- * /api/track-search:
+ * /api/search-result:
  *   post:
  *     summary: Track mobile number search
  *     description: Records or increments the search count for a mobile number
@@ -105,7 +107,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-app.post('/api/track-search', async (req, res) => {
+app.post('/api/search-result', async (req, res) => {
   try {
     const { mobileNumber } = req.body;
     
@@ -156,10 +158,17 @@ app.post('/api/track-search', async (req, res) => {
       return res.status(404).json({ error: 'No test result found for this mobile number' });
     }
     
-    res.json({
+    const response = {
       success: true,
       data: testResult[0]
-    });
+    };
+    
+    // Only add whatsappLink if result is 'Selected'
+    if (testResult[0].result === 'Selected') {
+      response.whatsappLink = process.env.WHATSAPP_LINK;
+    }
+    
+    res.json(response);
 
   } catch (error) {
     console.error('Track search error:', error);
