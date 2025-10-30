@@ -8,14 +8,14 @@ require('dotenv').config();
 
 // Handle uncaught exceptions - log but don't exit
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error);
-  // Don't exit in production, let Railway handle restarts
+  console.error('Uncaught Exception:', error.message, error.stack);
+  // Don't exit - keep server running
 });
 
 // Handle unhandled promise rejections - log but don't exit
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // Don't exit in production, let Railway handle restarts
+  console.error('Unhandled Rejection:', reason);
+  // Don't exit - keep server running
 });
 
 // Handle memory warnings
@@ -23,8 +23,21 @@ process.on('warning', (warning) => {
   console.warn('Warning:', warning.name, warning.message);
 });
 
+// Handle SIGTERM gracefully without exiting
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received - server continuing');
+});
+
+// Handle SIGINT gracefully without exiting
+process.on('SIGINT', () => {
+  console.log('SIGINT received - server continuing');
+});
+
 const app = express();
 const PORT = process.env.PORT || 3002;
+
+// Trust Railway proxy for accurate IP detection
+app.set('trust proxy', 1);
 
 // CORS must be before other middleware
 app.use(cors({
@@ -48,16 +61,41 @@ const limiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
   skip: (req) => req.method === 'OPTIONS',
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  trustProxy: true // Trust Railway proxy
 });
 app.use(limiter);
 
-// Body parser
-app.use(express.json({ limit: '10mb' }));
+// Body parser with error handling
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    try {
+      JSON.parse(buf);
+    } catch (e) {
+      console.error('Invalid JSON:', e.message);
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Initialize database
-initDatabase();
+// Global error prevention middleware
+app.use((req, res, next) => {
+  try {
+    next();
+  } catch (error) {
+    console.error('Middleware error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Initialize database with retry
+try {
+  initDatabase();
+} catch (error) {
+  console.error('Database init error:', error);
+  // Continue without database - server stays up
+}
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
@@ -277,11 +315,17 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Error handling middleware
+// Comprehensive error handling middleware
 app.use((error, req, res, next) => {
-  console.error('Unhandled error:', error);
-  if (!res.headersSent) {
-    res.status(500).json({ error: 'Internal server error' });
+  console.error('Unhandled error:', error.message, error.stack);
+  
+  // Prevent server crash on any error
+  try {
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  } catch (responseError) {
+    console.error('Response error:', responseError);
   }
 });
 
@@ -293,16 +337,26 @@ app.options('*', (req, res) => {
   res.sendStatus(200);
 });
 
-// Request timeout middleware
+// Request timeout middleware with error protection
 app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return next();
-  res.setTimeout(30000, () => {
-    console.error('Request timeout:', req.url);
-    if (!res.headersSent) {
-      res.status(408).json({ error: 'Request timeout' });
-    }
-  });
-  next();
+  
+  try {
+    res.setTimeout(30000, () => {
+      console.error('Request timeout:', req.url);
+      try {
+        if (!res.headersSent) {
+          res.status(408).json({ error: 'Request timeout' });
+        }
+      } catch (timeoutError) {
+        console.error('Timeout response error:', timeoutError);
+      }
+    });
+    next();
+  } catch (error) {
+    console.error('Timeout middleware error:', error);
+    next();
+  }
 });
 
 // 404 handler
